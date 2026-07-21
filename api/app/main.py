@@ -3,10 +3,14 @@ from typing import List
 from app.models import TaskbotInput, EvaluacionOutput, ReporteGlobalSummary
 from app.repository import ReglasRepository
 from app.service import MotorDecisionService
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 app = FastAPI(
     title="XYZ Ltda. - Motor Inteligente de Consolidación y Migración",
-    description="Microservicio Core de grado empresarial para el análisis del portafolio de automatización.",
+    description="Microservicio Core de Evaluación de Arquitectura para Taskbots",
     version="1.1.0"
 )
 
@@ -30,15 +34,30 @@ def analizar_lote_json(bots: List[TaskbotInput], service: MotorDecisionService =
     Recibe un payload JSON con una lista estructurada de taskbots,
     los evalúa en lote y genera las recomendaciones arquitectónicas.
     """
+
     if not bots:
+        logger.info(
+                    "Processing batch",
+                    extra={
+                            "batch_size": 0,
+                            "workflow": "analyze-batch"
+                        },
+                    ) 
         raise HTTPException(status_code=400, detail="El lote de entrada no puede estar vacío.")
-    
+
+
     try:
         items_evaluados = []
         for bot_in in bots:
             res = service.evaluar_taskbot(bot_in)
             items_evaluados.append(res)
-            
+        logger.info(
+            "Processing batch",
+            extra={
+                    "batch_size": len(items_evaluados),
+                    "workflow": "analyze-batch"
+                },
+            ) 
         # Generar Métricas Ejecutivas del Lote
         summary = ReporteGlobalSummary(
             total_procesados=len(items_evaluados),
@@ -48,6 +67,7 @@ def analizar_lote_json(bots: List[TaskbotInput], service: MotorDecisionService =
             total_rpa_selectivo=len([x for x in items_evaluados if x.tecnologia_sugerida == "RPA Selectivo"]),
             items=items_evaluados
         )
+        
         return summary
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en procesamiento del lote JSON: {str(e)}")

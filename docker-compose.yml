@@ -27,6 +27,12 @@ services:
       N8N_HOST: localhost
       N8N_PORT: 5678
       N8N_PROTOCOL: http
+      N8N_UNVERIFIED_PACKAGES_ENABLED: true
+      N8N_RUNNERS_TASK_TIMEOUT: 300
+      N8N_COMPRESSION_NODE_MAX_DECOMPRESSED_SIZE_BYTES: 2147483648
+      N8N_COMPRESSION_NODE_MAX_ZIP_ENTRIES: 5000
+      N8N_LOG_LEVEL: info
+      N8N_LOG_OUTPUT: console
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -39,10 +45,79 @@ services:
     restart: unless-stopped
     environment:
       TZ: America/Bogota
+      OTEL_SERVICE_NAME: motor-decision
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4317
+      OTEL_TRACES_EXPORTER: otlp
+      OTEL_METRICS_EXPORTER: none
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED: true
+      OTEL_PYTHON_LOG_CORRELATION: true
     ports:
       - "8000:8000"
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki
+    restart: unless-stopped
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/config.yml
+    volumes:
+      - ./observability/loki/config.yml:/etc/loki/config.yml:Z
+      - loki_data:/loki
 
+  alloy:
+    image: grafana/alloy:latest
+    container_name: alloy
+    restart: unless-stopped
+    ports:
+    - "4317:4317"
+    - "4318:4318"
+    volumes:
+      - ./observability/grafana/alloy/config.alloy:/etc/alloy/config.alloy:Z
+    command:
+      - run
+      - /etc/alloy/config.alloy
+    depends_on:
+      - loki
+  tempo:
+    image: grafana/tempo:2.7.2
+    command:
+      - "-config.file=/etc/tempo.yaml"
+
+    volumes:
+      - ./observability/tempo/tempo.yaml:/etc/tempo.yaml:Z
+      - tempo_data:/tmp/tempo
+    expose:
+      - "4317"
+      - "4318"
+      - "3200"
+    ports:
+      - "3200:3200"
+
+  prometheus:
+    image: prom/prometheus:v3.5.0
+
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GF_SECURITY_ADMIN_USER}
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_SECURITY_ADMIN_PASSWORD}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:Z
+    depends_on:
+      - loki
 
 volumes:
   postgres_data:
   n8n_data:
+  loki_data:
+  grafana_data:
+  tempo_data:
